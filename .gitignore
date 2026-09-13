@@ -1,0 +1,22 @@
+# PlatformIO build artifacts & libraries
+.pio/
+*/.pio/
+.pioenvs/
+.piolibdeps/
+.clang_complete
+.gcc-flags.json
+
+# VS Code & IDE settings
+.vscode/
+*/.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets & credentials (keep real credentials out of Git)
+**/secrets.h
+!**/secrets.example.h
+
+# OS generated files
+.DS_Store
+Thumbs.db
