@@ -1,12 +1,27 @@
-"""Shared MQTT connection settings, loaded from pycode/.env."""
+"""Shared MQTT connection settings.
+
+Reads from Streamlit's st.secrets when deployed (Streamlit Community Cloud),
+falling back to pycode/.env for local development.
+"""
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
+try:
+    import streamlit as st
+    _secrets = st.secrets
+except Exception:
+    _secrets = {}
 
-load_dotenv(Path(__file__).parent / ".env")
+if not _secrets:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env")
 
-MQTT_HOST = os.environ["MQTT_HOST"]
-MQTT_PORT = int(os.environ["MQTT_PORT"])
-MQTT_USER = os.environ["MQTT_USER"]
-MQTT_PASSWORD = os.environ["MQTT_PASSWORD"]
+
+def _get(key: str) -> str:
+    return _secrets[key] if key in _secrets else os.environ[key]
+
+
+MQTT_HOST = _get("MQTT_HOST")
+MQTT_PORT = int(_get("MQTT_PORT"))
+MQTT_USER = _get("MQTT_USER")
+MQTT_PASSWORD = _get("MQTT_PASSWORD")

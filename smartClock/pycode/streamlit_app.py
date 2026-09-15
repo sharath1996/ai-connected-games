@@ -6,6 +6,7 @@ Run with:
 import json
 import ssl
 
+import emoji
 import streamlit as st
 import paho.mqtt.client as mqtt
 
@@ -16,12 +17,16 @@ OLED_TOPIC = "device/output/oled"
 LED_TOPIC = "device/output/ledstrip"
 NUM_PIXELS = 10
 
-# Curated offline emoji picker (no external/internet lookup needed)
-EMOJI_CHOICES = [
-    "😀", "😂", "😍", "😎", "🤔", "😴", "😭", "😡", "🥳", "😱",
-    "👍", "👎", "👋", "❤️", "🔥", "⭐", "⏰", "☀️", "🌧️", "❄️",
-    "🎉", "✅", "❌", "⚠️", "💡", "🎵", "☕", "🍕", "🐶", "🐱",
-]
+
+@st.cache_data
+def load_emoji_choices() -> list:
+    """Full Unicode emoji list (char, name) from the `emoji` package, sorted by name."""
+    choices = [
+        (char, data["en"].strip(":").replace("_", " "))
+        for char, data in emoji.EMOJI_DATA.items()
+        if data.get("status") == emoji.STATUS["fully_qualified"]
+    ]
+    return sorted(choices, key=lambda pair: pair[1])
 
 
 def publish(topic: str, payload: dict) -> None:
@@ -49,17 +54,22 @@ st.header("😀 OLED Emoji")
 if "emoji" not in st.session_state:
     st.session_state.emoji = "😀"
 
-st.caption("Pick an emoji:")
-picker_cols = st.columns(10)
-for i, choice in enumerate(EMOJI_CHOICES):
-    if picker_cols[i % 10].button(choice, key=f"emoji_choice_{i}"):
-        st.session_state.emoji = choice
+emoji_choices = load_emoji_choices()
+st.caption(f"Search the full emoji list ({len(emoji_choices)} available):")
+selected = st.selectbox(
+    "Pick an emoji",
+    options=emoji_choices,
+    format_func=lambda pair: f"{pair[0]}  {pair[1]}",
+    label_visibility="collapsed",
+)
+if st.button("Use selected emoji"):
+    st.session_state.emoji = selected[0]
 
-emoji = st.text_input("Emoji", key="emoji", max_chars=8)
+emoji_value = st.text_input("Emoji", key="emoji", max_chars=8)
 if st.button("Send emoji to OLED"):
     with st.spinner("Sending..."):
-        DisplayEmoji.display(emoji)
-    st.success(f"Sent {emoji} to {OLED_TOPIC}")
+        DisplayEmoji.display(emoji_value)
+    st.success(f"Sent {emoji_value} to {OLED_TOPIC}")
 
 st.divider()
 
