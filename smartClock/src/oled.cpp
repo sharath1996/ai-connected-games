@@ -22,45 +22,36 @@ void oledInit() {
   u8g2.sendBuffer();
 }
 
-// simple base64 decode used only here
-static int base64DecodeLocal(const String &input, uint8_t *out, size_t outMax) {
-  auto valOf = [](char c)->int {
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return 26 + (c - 'a');
-    if (c >= '0' && c <= '9') return 52 + (c - '0');
-    if (c == '+') return 62;
-    if (c == '/') return 63;
-    return -1;
-  };
-  int outLen = 0;
-  int val = 0, valb = -8;
-  for (size_t i = 0; i < input.length(); ++i) {
-    char c = input[i];
-    if (c == '=') break;
-    int d = valOf(c);
-    if (d == -1) continue;
-    val = (val << 6) + d;
-    valb += 6;
-    if (valb >= 0) {
-      if ((size_t)outLen >= outMax) return -1;
-      out[outLen++] = (uint8_t)((val >> valb) & 0xFF);
-      valb -= 8;
-    }
-  }
-  return outLen;
-}
+static const int TOTAL_PIXELS = SCREEN_WIDTH * SCREEN_HEIGHT; // 8192
+static const int PACKED_SIZE = TOTAL_PIXELS / 8; // 1024
 
+// "data" is a plain string of '0'/'1' chars, one per pixel, row-major (no base64/BMP)
 void oledHandleCommand(JsonDocument &doc) {
-  if (!doc.containsKey("data")) { publishAck(nullptr, "error", "missing data"); return; }
-  const char* b64 = doc["data"];
-  static uint8_t bmp[128 * 64 / 8];
-  int decoded = base64DecodeLocal(String(b64), bmp, sizeof(bmp));
-  if (decoded != (int)sizeof(bmp)) {
-    publishAck(nullptr, "error", "invalid bitmap size");
+  if (!doc.containsKey("data")) { Serial.println("OLED: missing data"); publishAck(nullptr, "error", "missing data"); return; }
+  const char* pixels = doc["data"];
+  size_t len = strlen(pixels);
+  if (len != (size_t)TOTAL_PIXELS) {
+    Serial.printf("OLED: expected %d pixel chars, got %u\n", TOTAL_PIXELS, (unsigned)len);
+    publishAck(nullptr, "error", "expected 128*64 pixel chars");
     return;
   }
+
+  static uint8_t bmp[PACKED_SIZE];
+  memset(bmp, 0, sizeof(bmp));
+  for (int i = 0; i < TOTAL_PIXELS; ++i) {
+    char c = pixels[i];
+    if (c == '1') {
+      bmp[i / 8] |= (1 << (i % 8)); // LSB-first per byte, matching XBM row order
+    } else if (c != '0') {
+      publishAck(nullptr, "error", "invalid pixel char, expected 0/1");
+      return;
+    }
+  }
+
   u8g2.clearBuffer();
-  u8g2.drawXBMP(0, 0, 128, 64, bmp);
+  u8g2.drawXBMP(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, bmp);
   u8g2.sendBuffer();
+  Serial.println("OLED: updated");
   publishAck(nullptr, "ok", nullptr);
 }
+

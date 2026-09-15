@@ -21,7 +21,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   for (unsigned int i = 0; i < length; ++i) msg += (char)payload[i];
   Serial.print("MQTT msg on "); Serial.print(t); Serial.print(": "); Serial.println(msg);
 
-  StaticJsonDocument<2048> doc;
+  DynamicJsonDocument doc(9000);
   DeserializationError err = deserializeJson(doc, msg);
   if (err) { Serial.println("JSON parse failed"); publishAck(nullptr, "error", "json parse"); return; }
 

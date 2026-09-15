@@ -29,6 +29,8 @@ void wifiInit() {
 void setMqttCallback(void (*callback)(char*, uint8_t*, unsigned int)) {
   userCallback = callback;
   mqttClient.setCallback(callback);
+  // default 256-byte buffer is too small for the 128*64 raw-pixel OLED payload (~8.2KB)
+  mqttClient.setBufferSize(9000);
 }
 
 void ensureMqttConnected() {
