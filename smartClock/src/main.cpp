@@ -1,15 +1,6 @@
 #include <Arduino.h>
 #include <Adafruit_GFX.h>
-// Select your OLED driver size BEFORE including the SSD1306 header.
-// If your module is 128x32, uncomment the following line and recompile.
-// #define SSD1306_128_32
-// By default we assume 128x64; the library requires one of these macros.
-#ifndef SSD1306_128_32
-#ifndef SSD1306_128_64
-#define SSD1306_128_64
-#endif
-#endif
-#include <Adafruit_SSD1306.h>
+#include <U8g2lib.h>
 #include <FastLED.h>
 #include <WiFi.h>
 #include <time.h>
@@ -20,7 +11,7 @@
 // Hardware & Display Settings
 // ============================================================
 constexpr int SCREEN_WIDTH = 128;
-constexpr int SCREEN_HEIGHT = 32; // If your module is 128x32 change this to 32
+constexpr int SCREEN_HEIGHT = 64; // If your module is 128x32 change this to 32
 constexpr int OLED_SDA = 21;
 constexpr int OLED_SCL = 22;
 uint8_t OLED_ADDRESS =0x3c; // try 0x3C or 0x3D; scanner will list detected addresses
@@ -44,7 +35,8 @@ constexpr unsigned long HOLD_DURATION    = 2000;  // 2 seconds stay bright
 constexpr unsigned long SUNSET_DURATION  = 5000;  // 5 seconds
 
 // Objects & LED buffer
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+// Use U8g2 with SH1106 128x64 (works with many 1.3" modules).
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 CRGB leds[NUM_PIXELS];
 
 // Key colors for smooth FastLED blending
@@ -149,10 +141,8 @@ void updateAlarm(const struct tm &timeInfo) {
   }
 }
 
-// Non-blocking OLED display update
+// Non-blocking OLED display update using u8g2
 void updateDisplay(const struct tm &timeInfo) {
-  display.clearDisplay();
-
   // Format time: HH:MM:SS
   char timeStr[9];
   snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d", 
@@ -162,17 +152,19 @@ void updateDisplay(const struct tm &timeInfo) {
   char dateStr[20];
   strftime(dateStr, sizeof(dateStr), "%a, %d %b %Y", &timeInfo);
 
-  // Display Time (centered)
-  display.setTextSize(2);
-  display.setCursor(16, 14);
-  display.print(timeStr);
+  u8g2.clearBuffer();
 
-  // Display Date (centered)
-  display.setTextSize(1);
-  display.setCursor(16, 42);
-  display.print(dateStr);
+  // Time (large font, centered)
+  u8g2.setFont(u8g2_font_ncenB24_tr);
+  int timeW = u8g2.getUTF8Width(timeStr);
+  u8g2.drawStr((SCREEN_WIDTH - timeW) / 2, 32, timeStr);
 
-  display.display();
+  // Date (smaller font, centered near bottom)
+  u8g2.setFont(u8g2_font_6x12_tr);
+  int dateW = u8g2.getUTF8Width(dateStr);
+  u8g2.drawStr((SCREEN_WIDTH - dateW) / 2, 58, dateStr);
+
+  u8g2.sendBuffer();
 }
 
 // Non-blocking Serial alarm input
@@ -260,7 +252,7 @@ void setup() {
   const char* oledType = "SSD1306_128_64";
 #endif
   Serial.print("Configured display: "); Serial.print(SCREEN_WIDTH); Serial.print("x"); Serial.println(SCREEN_HEIGHT);
-  Serial.print("SSD1306 macro: "); Serial.println(oledType);
+  Serial.println("Using U8g2 (SH1106 driver) for OLED");
 
   // Initialize FastLED
   FastLED.addLeds<WS2812B, PIN_WS2812B, GRB>(leds, NUM_PIXELS);
@@ -288,27 +280,17 @@ void setup() {
   if (!foundAny) {
     Serial.println("  No I2C devices found. Check wiring (SDA/SCL/GND/VCC).\n");
   }
-  // Try initializing with configured address; if it fails, try the alternative 0x3D.
-  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
-    Serial.print("OLED init failed at 0x");
-    Serial.println(OLED_ADDRESS, HEX);
-    uint8_t alt = (OLED_ADDRESS == 0x3C) ? 0x3D : 0x3C;
-    Serial.print("Trying alternative address 0x"); Serial.println(alt, HEX);
-    if (!display.begin(SSD1306_SWITCHCAPVCC, alt)) {
-      Serial.println("OLED initialization failed at both addresses. Check wiring and screen resolution (128x32 vs 128x64).\n");
-      while (true) delay(1000);
-    } else {
-      OLED_ADDRESS = alt;
-      Serial.print("OLED initialized at 0x"); Serial.println(OLED_ADDRESS, HEX);
-    }
-  }
+  // Initialize u8g2 (SH1106/compatible). u8g2 uses Wire; Wire already began above.
+  u8g2.begin();
+  Serial.println("u8g2 initialized");
 
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-  display.setTextSize(1);
-  display.setCursor(15, 25);
-  display.println("Connecting WiFi...");
-  display.display();
+  // Show initial message on the OLED
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_ncenB08_tr);
+  const char *msg = "Connecting WiFi...";
+  int msgW = u8g2.getUTF8Width(msg);
+  u8g2.drawStr((SCREEN_WIDTH - msgW) / 2, 28, msg);
+  u8g2.sendBuffer();
 
   // Connect to Wi-Fi
   WiFi.mode(WIFI_STA);
@@ -322,10 +304,11 @@ void setup() {
   // Initialize NTP time sync
   configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, "pool.ntp.org");
   
-  display.clearDisplay();
-  display.setCursor(20, 25);
-  display.println("Syncing Time...");
-  display.display();
+  u8g2.clearBuffer();
+  const char *syncMsg = "Syncing Time...";
+  int syncW = u8g2.getUTF8Width(syncMsg);
+  u8g2.drawStr((SCREEN_WIDTH - syncW) / 2, 28, syncMsg);
+  u8g2.sendBuffer();
 
   struct tm timeInfo;
   while (!getLocalTime(&timeInfo)) {
