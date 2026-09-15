@@ -20,12 +20,18 @@ TOPIC = "device/output/oled"
 
 WIDTH, HEIGHT = 128, 64
 # Windows built-in color emoji font, with fallbacks for Linux/cloud environments
+# (installed via packages.txt: fonts-noto-color-emoji, fonts-noto-emoji)
 EMOJI_FONT_CANDIDATES = [
     "seguiemj.ttf",
     "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+    "/usr/share/fonts/truetype/noto-emoji/NotoColorEmoji.ttf",
+    "/usr/share/fonts/truetype/noto/NotoEmoji-Regular.ttf",
+    "/usr/share/fonts/truetype/noto-emoji/NotoEmoji-Regular.ttf",
     "NotoColorEmoji.ttf",
 ]
 FONT_SIZE = 56
+# Color bitmap fonts (e.g. NotoColorEmoji) only support fixed strike sizes; try a few
+FONT_SIZE_CANDIDATES = [FONT_SIZE, 128, 136, 109, 72, 64, 32]
 THRESHOLD = 128  # luminance below this is treated as "on" (dark glyph on light bg)
 MQTT_TIMEOUT = 10  # seconds
 
@@ -41,10 +47,11 @@ class DisplayEmoji:
     def _load_font() -> ImageFont.FreeTypeFont:
         last_error = None
         for path in EMOJI_FONT_CANDIDATES:
-            try:
-                return ImageFont.truetype(path, FONT_SIZE)
-            except OSError as exc:
-                last_error = exc
+            for size in FONT_SIZE_CANDIDATES:
+                try:
+                    return ImageFont.truetype(path, size)
+                except OSError as exc:
+                    last_error = exc
         raise DisplayEmojiError(f"No emoji font available on this system: {last_error}")
 
     @staticmethod
@@ -52,13 +59,19 @@ class DisplayEmoji:
         if not emoji:
             raise DisplayEmojiError("Emoji text is empty")
         font = DisplayEmoji._load_font()
-        canvas = Image.new("RGBA", (WIDTH, HEIGHT), (255, 255, 255, 255))
-        draw = ImageDraw.Draw(canvas)
         try:
+            # render on a generous scratch canvas first, since the loaded font's
+            # native strike size may not match our target dimensions
+            scratch = Image.new("RGBA", (256, 256), (255, 255, 255, 255))
+            draw = ImageDraw.Draw(scratch)
             bbox = draw.textbbox((0, 0), emoji, font=font, embedded_color=True)
-            text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            pos = ((WIDTH - text_w) // 2 - bbox[0], (HEIGHT - text_h) // 2 - bbox[1])
-            draw.text(pos, emoji, font=font, embedded_color=True)
+            draw.text((0, 0), emoji, font=font, embedded_color=True)
+            glyph = scratch.crop(bbox)
+            glyph.thumbnail((WIDTH, HEIGHT))
+
+            canvas = Image.new("RGBA", (WIDTH, HEIGHT), (255, 255, 255, 255))
+            pos = ((WIDTH - glyph.width) // 2, (HEIGHT - glyph.height) // 2)
+            canvas.paste(glyph, pos)
         except Exception as exc:
             raise DisplayEmojiError(f"Failed to render emoji: {exc}") from exc
 
