@@ -11,11 +11,12 @@ import streamlit as st
 import paho.mqtt.client as mqtt
 
 from mqtt_config import MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASSWORD
-from DisplayEmoji import DisplayEmoji
+from DisplayEmoji import DisplayEmoji, DisplayEmojiError
 
 OLED_TOPIC = "device/output/oled"
 LED_TOPIC = "device/output/ledstrip"
 NUM_PIXELS = 10
+MQTT_TIMEOUT = 10  # seconds
 
 
 @st.cache_data
@@ -34,12 +35,18 @@ def publish(topic: str, payload: dict) -> None:
     client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
     client.tls_set(cert_reqs=ssl.CERT_NONE)
     client.tls_insecure_set(True)
-    client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
-    client.loop_start()
-    info = client.publish(topic, json.dumps(payload), qos=1)
-    info.wait_for_publish()
-    client.loop_stop()
-    client.disconnect()
+    try:
+        client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
+        client.loop_start()
+        info = client.publish(topic, json.dumps(payload), qos=1)
+        info.wait_for_publish(timeout=MQTT_TIMEOUT)
+        if not info.is_published():
+            raise RuntimeError("Publish did not complete in time")
+    except Exception as exc:
+        raise RuntimeError(f"MQTT connection/publish failed: {exc}") from exc
+    finally:
+        client.loop_stop()
+        client.disconnect()
 
 
 def hex_to_rgb(hex_color: str) -> list:
@@ -67,9 +74,17 @@ if st.button("Use selected emoji"):
 
 emoji_value = st.text_input("Emoji", key="emoji", max_chars=8)
 if st.button("Send emoji to OLED"):
-    with st.spinner("Sending..."):
-        DisplayEmoji.display(emoji_value)
-    st.success(f"Sent {emoji_value} to {OLED_TOPIC}")
+    if not emoji_value.strip():
+        st.warning("Please enter or pick an emoji first.")
+    else:
+        try:
+            with st.spinner("Sending..."):
+                DisplayEmoji.display(emoji_value)
+            st.success(f"Sent {emoji_value} to {OLED_TOPIC}")
+        except DisplayEmojiError as exc:
+            st.error(f"Couldn't send emoji: {exc}")
+        except Exception as exc:
+            st.error(f"Unexpected error: {exc}")
 
 st.divider()
 
@@ -89,11 +104,17 @@ else:
             colors.append(hex_to_rgb(c))
 
 if st.button("Send colors to LED strip"):
-    with st.spinner("Sending..."):
-        publish(LED_TOPIC, {"data": colors[::-1], "brightness": brightness})
-    st.success(f"Sent colors to {LED_TOPIC}")
+    try:
+        with st.spinner("Sending..."):
+            publish(LED_TOPIC, {"data": colors[::-1], "brightness": brightness})
+        st.success(f"Sent colors to {LED_TOPIC}")
+    except Exception as exc:
+        st.error(f"Couldn't send colors: {exc}")
 
 if st.button("Turn LEDs off"):
-    with st.spinner("Sending..."):
-        publish(LED_TOPIC, {"data": [[0, 0, 0]] * NUM_PIXELS, "brightness": 0})
-    st.success("LEDs turned off")
+    try:
+        with st.spinner("Sending..."):
+            publish(LED_TOPIC, {"data": [[0, 0, 0]] * NUM_PIXELS, "brightness": 0})
+        st.success("LEDs turned off")
+    except Exception as exc:
+        st.error(f"Couldn't turn off LEDs: {exc}")
