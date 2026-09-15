@@ -2,6 +2,9 @@
 #include <Adafruit_GFX.h>
 #include <U8g2lib.h>
 #include <FastLED.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
 #include <WiFi.h>
 #include <time.h>
 
@@ -15,6 +18,18 @@ constexpr int SCREEN_HEIGHT = 64; // If your module is 128x32 change this to 32
 constexpr int OLED_SDA = 21;
 constexpr int OLED_SCL = 22;
 uint8_t OLED_ADDRESS =0x3c; // try 0x3C or 0x3D; scanner will list detected addresses
+
+// MQTT / HiveMQ settings
+const char* MQTT_HOST = "1209eebea1444967be8397ca788a74b9.s1.eu.hivemq.cloud";
+const uint16_t MQTT_PORT = 8883;
+const char* MQTT_TOPIC_ALARM_SET = "home/smartclock/alarm/set";
+const char* MQTT_TOPIC_ALARM_STATUS = "home/smartclock/alarm/status";
+const char* MQTT_TOPIC_TIME_SET = "home/smartclock/time/set";
+
+WiFiClientSecure tlsClient;
+PubSubClient mqttClient(tlsClient);
+
+char mqttClientId[32];
 
 // Timezone offset (GMT + 5:30 = 19800 seconds)
 constexpr long GMT_OFFSET_SEC = 19800;
@@ -240,6 +255,88 @@ void readAlarmFromSerial() {
   Serial.print("> ");
 }
 
+// Publish JSON ack for alarm set
+void publishAlarmStatus(int h, int m, const char* result) {
+  StaticJsonDocument<128> doc;
+  doc["hour"] = h;
+  doc["minute"] = m;
+  doc["status"] = result;
+  char buf[128];
+  size_t n = serializeJson(doc, buf);
+  buf[n] = '\0';
+  mqttClient.publish(MQTT_TOPIC_ALARM_STATUS, buf, true);
+}
+
+// MQTT message handler
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  String t = String(topic);
+  String msg;
+  for (unsigned int i = 0; i < length; ++i) msg += (char)payload[i];
+  Serial.print("MQTT msg on "); Serial.print(t); Serial.print(": "); Serial.println(msg);
+
+  StaticJsonDocument<200> doc;
+  DeserializationError err = deserializeJson(doc, msg);
+  if (err) {
+    Serial.println("JSON parse failed");
+    return;
+  }
+
+  if (t.equals(MQTT_TOPIC_ALARM_SET)) {
+    int h = -1, m = -1;
+    if (doc.containsKey("hour")) h = doc["hour"];
+    if (doc.containsKey("minute")) m = doc["minute"];
+    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+      alarmHour = h; alarmMinute = m;
+      Serial.print("Alarm set via MQTT to "); Serial.print(alarmHour); Serial.print(":"); Serial.println(alarmMinute);
+      publishAlarmStatus(alarmHour, alarmMinute, "ok");
+    } else {
+      Serial.println("Invalid alarm payload");
+      publishAlarmStatus(alarmHour, alarmMinute, "invalid");
+    }
+  } else if (t.equals(MQTT_TOPIC_TIME_SET)) {
+    // expect { "epoch": 169... }
+    if (doc.containsKey("epoch")) {
+      long epoch = doc["epoch"];
+      timeval tv;
+      tv.tv_sec = epoch;
+      tv.tv_usec = 0;
+      settimeofday(&tv, NULL);
+      Serial.print("Time set via MQTT epoch="); Serial.println(epoch);
+      // publish ack on alarm status topic for simplicity
+      StaticJsonDocument<128> ack;
+      ack["epoch"] = epoch;
+      ack["status"] = "time_set";
+      char b[128]; size_t nn = serializeJson(ack, b);
+      b[nn] = '\0';
+      mqttClient.publish(MQTT_TOPIC_ALARM_STATUS, b, false);
+    }
+  }
+}
+
+// Connect / reconnect to MQTT broker
+void ensureMqttConnected() {
+  if (mqttClient.connected()) return;
+  Serial.print("Connecting to MQTT...");
+  // create client id from MAC
+  String mac = WiFi.macAddress();
+  mac.replace(":", "");
+  mac.toLowerCase();
+  snprintf(mqttClientId, sizeof(mqttClientId), "smartclock-%s", mac.c_str());
+  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  mqttClient.setCallback(mqttCallback);
+  tlsClient.setInsecure(); // accept any cert (use CA for production)
+
+  if (mqttClient.connect(mqttClientId, MQTT_USER, MQTT_PASSWORD)) {
+    Serial.println(" connected");
+    mqttClient.subscribe(MQTT_TOPIC_ALARM_SET);
+    mqttClient.subscribe(MQTT_TOPIC_TIME_SET);
+    // publish current alarm as retained status
+    publishAlarmStatus(alarmHour, alarmMinute, "online");
+  } else {
+    Serial.print(" failed, rc="); Serial.println(mqttClient.state());
+  }
+}
+
 // ============================================================
 // Setup
 // ============================================================
@@ -317,6 +414,8 @@ void setup() {
   }
   Serial.println("\nTime synced!");
   readAlarmFromSerial();
+  // Start MQTT after time is synced
+  ensureMqttConnected();
 }
 
 // ============================================================
@@ -330,6 +429,10 @@ void loop() {
   if (getLocalTime(&timeInfo, 10)) {
     // Non-blocking alarm check and LED updates
     updateAlarm(timeInfo);
+
+    // MQTT loop and reconnect
+    ensureMqttConnected();
+    mqttClient.loop();
 
     // Update screen every 200 ms for smooth ticking
     unsigned long now = millis();
