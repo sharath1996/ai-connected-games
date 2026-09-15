@@ -8,7 +8,7 @@ from pathlib import Path
 
 try:
     import streamlit as st
-    _secrets = st.secrets
+    _secrets = dict(st.secrets)
 except Exception:
     _secrets = {}
 
