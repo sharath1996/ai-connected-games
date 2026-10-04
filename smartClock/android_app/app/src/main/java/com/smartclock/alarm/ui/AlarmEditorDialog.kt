@@ -1,29 +1,19 @@
 package com.smartclock.alarm.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.smartclock.alarm.alarm.Alarm
@@ -48,8 +37,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-// Symbols known to exist in the firmware's OLED font (u8g2_font_unifont_t_symbols).
-private val EMOJI_CHOICES = listOf("♥", "★", "☀", "☁", "☂", "♪", "⚡", "✓", "✗")
+// Symbol choices come from CommonControls.kt (EMOJI_CHOICES, same package).
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,7 +45,7 @@ fun AlarmEditorDialog(
     initial: Alarm?,
     onDismiss: () -> Unit,
     onSave: (Alarm) -> Unit,
-    onSaveBootDefaults: ((r: Int, g: Int, b: Int, brightness: Int, emoji: String) -> Unit)? = null
+    onSaveProfile: ((name: String, r: Int, g: Int, b: Int, emoji: String, sound: Boolean) -> Unit)? = null
 ) {
     val now = remember { Calendar.getInstance() }
     var label by remember { mutableStateOf(initial?.label ?: "") }
@@ -70,8 +58,6 @@ fun AlarmEditorDialog(
     var b by remember { mutableFloatStateOf((initial?.b ?: 0).toFloat()) }
     var emoji by remember { mutableStateOf(initial?.emoji ?: "♥") }
     var sound by remember { mutableStateOf(initial?.sound ?: true) }
-    var saveAsBootDefault by remember { mutableStateOf(false) }
-    var bootBrightness by remember { mutableFloatStateOf(128f) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
 
@@ -119,33 +105,9 @@ fun AlarmEditorDialog(
 
                 HorizontalDivider()
 
-                Text("LED color", style = MaterialTheme.typography.labelLarge)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color(r.toInt(), g.toInt(), b.toInt()))
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        ColorSlider("R", r) { r = it }
-                        ColorSlider("G", g) { g = it }
-                        ColorSlider("B", b) { b = it }
-                    }
-                }
+                ColorPickerSection(r, g, b, { r = it }, { g = it }, { b = it })
 
-                Text("OLED symbol", style = MaterialTheme.typography.labelLarge)
-                Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    for (choice in EMOJI_CHOICES) {
-                        FilterChip(
-                            selected = emoji == choice,
-                            onClick = { emoji = choice },
-                            label = { Text(choice) },
-                            modifier = Modifier.padding(end = 6.dp)
-                        )
-                    }
-                }
+                EmojiPickerSection(emoji) { emoji = it }
                 OutlinedTextField(
                     value = emoji,
                     onValueChange = { emoji = it },
@@ -158,33 +120,11 @@ fun AlarmEditorDialog(
                     Text("Sound buzzer", Modifier.weight(1f))
                     Switch(checked = sound, onCheckedChange = { sound = it })
                 }
-
-                HorizontalDivider()
-
-                Text("Power-on defaults", style = MaterialTheme.typography.labelLarge)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Save as boot default", Modifier.weight(1f))
-                    Switch(checked = saveAsBootDefault, onCheckedChange = { saveAsBootDefault = it })
-                }
-                if (saveAsBootDefault) {
-                    ColorSlider("Brightness", bootBrightness) { bootBrightness = it }
-                    Text(
-                        "The clock will boot into this color + symbol. (Sent when the alarm is saved.)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
-                }
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 val base = initial ?: Alarm(id = 0, hour = hour, minute = minute)
-                val finalEmoji = emoji.trim().ifEmpty { "♥" }
-                if (saveAsBootDefault && onSaveBootDefaults != null) {
-                    onSaveBootDefaults.invoke(
-                        r.toInt(), g.toInt(), b.toInt(), bootBrightness.toInt().coerceIn(1, 255), finalEmoji
-                    )
-                }
                 onSave(
                     base.copy(
                         label = label.trim(),
@@ -195,14 +135,28 @@ fun AlarmEditorDialog(
                         r = r.toInt(),
                         g = g.toInt(),
                         b = b.toInt(),
-                        emoji = finalEmoji,
+                        emoji = emoji.trim().ifEmpty { "♥" },
                         sound = sound,
                         enabled = true
                     )
                 )
             }) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            Row {
+                if (onSaveProfile != null) {
+                    TextButton(onClick = {
+                        val name = label.trim().ifEmpty { "Profile" }
+                        onSaveProfile.invoke(
+                            name, r.toInt(), g.toInt(), b.toInt(),
+                            emoji.trim().ifEmpty { "♥" }, sound
+                        )
+                        onDismiss()
+                    }) { Text("Save as profile") }
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        }
     )
 
     if (showTimePicker) {
@@ -238,26 +192,6 @@ fun AlarmEditorDialog(
                 TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
             }
         ) { DatePicker(dateState) }
-    }
-}
-
-@Composable
-private fun ColorSlider(label: String, value: Float, onChange: (Float) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.width(12.dp))
-        Slider(
-            value = value,
-            onValueChange = onChange,
-            valueRange = 0f..255f,
-            modifier = Modifier
-                .weight(1f)
-                .height(24.dp)
-        )
-        Text(
-            "%3d".format(value.toInt()),
-            Modifier.width(32.dp),
-            style = MaterialTheme.typography.labelSmall
-        )
     }
 }
 

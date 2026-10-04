@@ -4,7 +4,6 @@
 #include "ledarray.h"
 #include "buzzer.h"
 #include "commands.h"
-#include "settings.h"
 
 namespace {
 String serialLineBuffer;
@@ -27,17 +26,24 @@ void pollSerialCommands() {
 
 void setup() {
   Serial.begin(115200);
-  settingsInit();
   oledInit();
   ledInit();
-  applyStoredLeds();
+  defaultLEDColor(CRGB::Green);
   buzzerInit();
   buzzerPlayAlert();
-  applyStoredEmoji();
+  displayEmoji("♥");
 
 }
 
 void loop() {
   buzzerUpdate();
   pollSerialCommands();
+
+  // Re-transmit the frame periodically: keeps the marginal first pixel latched
+  // (3.3V data into a 5V-powered strip is at the edge of spec).
+  static uint32_t lastRefreshAt = 0;
+  if (millis() - lastRefreshAt >= 500) {
+    lastRefreshAt = millis();
+    refreshLED();
+  }
 }

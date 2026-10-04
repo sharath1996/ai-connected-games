@@ -11,8 +11,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -59,6 +63,8 @@ import androidx.compose.ui.unit.dp
 import com.smartclock.alarm.alarm.Alarm
 import com.smartclock.alarm.alarm.AlarmScheduler
 import com.smartclock.alarm.alarm.AlarmStore
+import com.smartclock.alarm.alarm.Profile
+import com.smartclock.alarm.alarm.ProfileStore
 import com.smartclock.alarm.ui.AlarmEditorDialog
 import com.smartclock.alarm.usb.UsbSerialManager
 import java.text.SimpleDateFormat
@@ -69,16 +75,20 @@ import kotlin.concurrent.thread
 class MainActivity : ComponentActivity() {
 
     private lateinit var store: AlarmStore
+    private lateinit var profileStore: ProfileStore
     private lateinit var usb: UsbSerialManager
     private val alarms = mutableStateListOf<Alarm>()
+    private val profiles = mutableStateListOf<Profile>()
     private val usbStatus = mutableStateOf("No device")
     private val snackMsg = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = AlarmStore(this)
+        profileStore = ProfileStore(this)
         usb = UsbSerialManager.get(this)
         reloadAlarms()
+        reloadProfiles()
         handleAttachIntent(intent)
         setContent { AppContent() }
     }
@@ -123,6 +133,34 @@ class MainActivity : ComponentActivity() {
     private fun reloadAlarms() {
         alarms.clear()
         alarms.addAll(store.loadAll())
+    }
+
+    private fun reloadProfiles() {
+        profiles.clear()
+        profiles.addAll(profileStore.loadAll())
+    }
+
+    private fun addProfile(name: String, r: Int, g: Int, b: Int, emoji: String, sound: Boolean) {
+        profileStore.add(Profile(profileStore.nextId(), name, r, g, b, emoji, sound))
+        reloadProfiles()
+        showSnack("Profile \"$name\" saved — tap it to apply")
+    }
+
+    private fun deleteProfile(profile: Profile) {
+        profileStore.delete(profile.id)
+        reloadProfiles()
+        showSnack("Profile \"${profile.name}\" deleted")
+    }
+
+    /** Applies a profile immediately: sends its TRIGGER command to the clock. */
+    private fun applyProfile(profile: Profile) {
+        thread {
+            val ack = usb.sendTrigger(profile.r, profile.g, profile.b, profile.emoji, profile.sound)
+            runOnUiThread {
+                usbStatus.value = usb.status
+                showSnack(ack?.let { "Applied \"${profile.name}\"" } ?: "Send failed — connect the clock first")
+            }
+        }
     }
 
     private fun saveAlarm(alarm: Alarm) {
@@ -196,6 +234,7 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                 ) {
                     UsbCard()
+                    ProfilesSection()
                     if (alarms.isEmpty()) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text("No alarms yet — tap + to add one", color = Color.Gray)
@@ -224,8 +263,8 @@ class MainActivity : ComponentActivity() {
                             saveAlarm(withId)
                             showEditor = false
                         },
-                        onSaveBootDefaults = { r, g, b, brightness, emoji ->
-                            sendBootDefaults(r, g, b, brightness, emoji)
+                        onSaveProfile = { name, r, g, b, emoji, sound ->
+                            addProfile(name, r, g, b, emoji, sound)
                         }
                     )
                 }
@@ -239,16 +278,49 @@ class MainActivity : ComponentActivity() {
         CenterAlignedTopAppBar(title = { Text("AiluClock") })
     }
 
-    /** Sends PERSIST_LED + PERSIST_EMOJI so the clock boots into these defaults. */
-    private fun sendBootDefaults(r: Int, g: Int, b: Int, brightness: Int?, emoji: String) {
-        showSnack("Saving boot defaults…")
-        thread {
-            val ackLed = usb.sendPersistLed(r, g, b, brightness)
-            val ackEmoji = usb.sendPersistEmoji(emoji)
-            runOnUiThread {
-                usbStatus.value = usb.status
-                val ok = ackLed != null && ackEmoji != null
-                showSnack(if (ok) "Boot defaults saved on the clock" else "Save failed — connect the clock first")
+    @OptIn(ExperimentalFoundationApi::class)
+    @Composable
+    private fun ProfilesSection() {
+        if (profiles.isEmpty()) return
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        ) {
+            Text("Color Profiles — tap to apply, long-press to delete",
+                style = MaterialTheme.typography.labelLarge, color = Color.Gray)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(vertical = 8.dp)
+            ) {
+                for (profile in profiles) {
+                    Card(
+                        Modifier
+                            .padding(end = 8.dp)
+                            .combinedClickable(
+                                onClick = { applyProfile(profile) },
+                                onLongClick = { deleteProfile(profile) }
+                            )
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(14.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(profile.r, profile.g, profile.b))
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(profile.emoji)
+                            Spacer(Modifier.width(6.dp))
+                            Text(profile.name, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
             }
         }
     }
@@ -292,23 +364,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }) { Text("Test") }
-            }
-            Row(
-                Modifier
-                    .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
-                    .fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Boot defaults: color + symbol shown at power-on",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(onClick = {
-                    // Persist green ♥ as a safe factory-style default.
-                    sendBootDefaults(0, 128, 0, null, "♥")
-                }) { Text("Set as boot default") }
             }
         }
     }

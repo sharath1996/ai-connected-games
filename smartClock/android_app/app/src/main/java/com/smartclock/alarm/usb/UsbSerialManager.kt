@@ -152,15 +152,6 @@ class UsbSerialManager private constructor(context: Context) {
     fun sendTrigger(r: Int, g: Int, b: Int, emoji: String, sound: Boolean): String? =
         sendCommand("TRIGGER $r $g $b $emoji ${if (sound) 1 else 0}")
 
-    /** Saves default LED color/brightness in the clock's flash (PERSIST_LED). */
-    fun sendPersistLed(r: Int, g: Int, b: Int, brightness: Int? = null): String? =
-        if (brightness == null) sendCommand("PERSIST_LED $r $g $b")
-        else sendCommand("PERSIST_LED $r $g $b $brightness")
-
-    /** Saves the default OLED symbol in the clock's flash (PERSIST_EMOJI). */
-    fun sendPersistEmoji(emoji: String): String? =
-        sendCommand("PERSIST_EMOJI $emoji")
-
     @Synchronized
     fun disconnect() {
         try {

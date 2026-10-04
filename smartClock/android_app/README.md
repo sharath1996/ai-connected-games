@@ -2,17 +2,18 @@
 
 An Android alarm app that fires the SmartClock firmware's `TRIGGER` command over a
 USB OTG cable at the scheduled time: it sets the LED array color, shows a symbol on
-the OLED, and optionally sounds the buzzer. It can also save **power-on defaults**
-(color, brightness, OLED symbol) into the clock's flash so it boots into them. See
+the OLED, and optionally sounds the buzzer. See
 [../docs/serial_commands.md](../docs/serial_commands.md) for the firmware-side protocol.
 
 ## Features
 
 - One-time alarms (specific date + time) or daily repeating alarms
 - Per-alarm trigger settings: LED color (R/G/B sliders), OLED symbol, buzzer on/off
-- **Power-on defaults**: "Save as boot default" in the alarm editor sends
-  `PERSIST_LED`/`PERSIST_EMOJI` so the clock boots into that color, brightness, and
-  symbol; a quick "Set as boot default" button on the USB card restores a green ♥
+- **Color Profiles**: save any editor configuration as a named profile ("Save as
+  profile" in the alarm editor). Profiles appear as chips on the main screen —
+  **tap to apply** instantly (sends TRIGGER right away), **long-press to delete**.
+  This acts as app-side persistence: the clock itself is stateless, but your saved
+  looks are one tap away.
 - Exact alarms via `AlarmManager` (fires even in doze mode); alarms are re-armed after reboot
 - USB status card with **Connect** and **Test** (sends `TRIGGER 255 0 0 ♥ 1`) buttons
 - If the clock isn't connected when an alarm fires, a high-priority notification on the
@@ -37,6 +38,28 @@ the OLED, and optionally sounds the buzzer. It can also save **power-on defaults
    Or use **Build > Build APK(s)** and sideload the APK.
 
 There is no checked-in Gradle wrapper — Android Studio supplies its own Gradle on sync.
+
+## Release build (for sharing with others)
+
+Debug APKs are signed with your machine's debug key — different PCs produce
+incompatible signatures, so recipients must uninstall first. A release APK signed
+with one stable key avoids that; updates install cleanly on top.
+
+1. **Create the keystore (once).** In Android Studio:
+   **Build → Generate Signed App Bundle / APK → APK → Create new…**
+   - Key store path: `android_app/ailuclock.keystore`
+   - Alias: `ailuclock`, validity 25+ years
+   - **Back up the keystore file and passwords** — losing them means you can never
+     update installed apps again.
+2. **Fill in `android_app/keystore.properties`** (already git-ignored) with the
+   keystore password, alias, and key password.
+3. **Build the signed APK**, either:
+   - Android Studio: **Build → Generate Signed App Bundle / APK → APK**, choose the
+     keystore, pick **release** → output in `app/release/`, or
+   - Command line (from `android_app/`): `gradlew :app:assembleRelease` →
+     `app/build/outputs/apk/release/app-release.apk`
+4. Share `app-release.apk` (network share, local HTTP server, internal chat —
+   recipients just tap to install and allow "unknown apps" for their browser).
 
 ## First-run setup
 
