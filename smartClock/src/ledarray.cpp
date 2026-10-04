@@ -11,6 +11,7 @@ uint8_t brightnessEnd = 0;
 uint8_t appliedBrightness = 0;
 uint32_t brightnessDurationMs = 0;
 uint32_t brightnessStartedAt = 0;
+CRGB currentColor = CRGB::Green;
 }
 
 void ledInit() {
@@ -20,8 +21,15 @@ void ledInit() {
 }
 
 void defaultLEDColor(CRGB color){
-  fill_solid(leds, NUM_PIXELS, color);
-  FastLED.show();
+  currentColor = color;
+  for (int i = 0; i < NUM_PIXELS; ++i) {
+    setLEDcolor(i, color);
+    delay(10);
+  }
+}
+
+void refreshLED() {
+  defaultLEDColor(currentColor);
 }
 
 void setLEDcolor(int index, CRGB color) {

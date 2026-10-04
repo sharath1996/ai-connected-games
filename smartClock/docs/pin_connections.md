@@ -4,7 +4,7 @@ Board: **ESP32-C3 Super Mini** (native USB, 11 usable GPIOs: 0–10).
 
 | Signal | ESP32-C3 Pin | Connection | Notes |
 |---|---:|---|---|
-| WS2812B Data | GPIO20 | Data input of WS2812B LED strip | `NUM_PIXELS = 6`. Use a logic-level shifter if powering LEDs with 5V; include a common GND. |
+| WS2812B Data | GPIO20 | Data input of WS2812B LED strip | `NUM_PIXELS = 5`. Use a logic-level shifter if powering LEDs with 5V; include a common GND. |
 | Buzzer signal | GPIO7 | Passive buzzer signal (+) | Plays a three-note alert using `tone()`. Connect buzzer GND to board GND. Use a transistor driver if the buzzer exceeds a GPIO's current rating. |
 | Push switch | GPIO10 | One switch terminal | Other switch terminal to GND; uses the internal pull-up. Pressing it starts the buzzer alert. |
 | OLED SDA (I2C) | GPIO5 | OLED SDA | SSD1306/SH1106 I2C address `0x3C`. |

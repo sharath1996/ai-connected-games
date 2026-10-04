@@ -40,4 +40,11 @@ void loop() {
   buzzerUpdate();
   pollSerialCommands();
 
+  // Re-transmit the frame periodically: masks a marginal first-pixel latch.
+  static uint32_t lastRefreshAt = 0;
+  if (millis() - lastRefreshAt >= 500) {
+    lastRefreshAt = millis();
+    refreshLED();
+  }
+
 }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ESP32-C3 native USB (Espressif VID 0x303A; Arduino CDC PID 0x1001) -->
+    <usb-device vendor-id="12346" />
+    <!-- Common USB-UART bridges, in case the board is ever connected through one -->
+    <usb-device vendor-id="6790" product-id="29987" />   <!-- CH340  0x1A86:0x7523 -->
+    <usb-device vendor-id="4292" product-id="60000" />   <!-- CP2102 0x10C4:0xEA60 -->
+    <usb-device vendor-id="1027" product-id="24577" />   <!-- FTDI   0x0403:0x6001 -->
+</resources>
