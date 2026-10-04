@@ -1,0 +1,12 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+.cxx/
+
+# Never commit signing material
+keystore.properties
+*.keystore
+*.jks
