@@ -1,5 +1,0 @@
-streamlit
-paho-mqtt
-Pillow
-emoji
-python-dotenv

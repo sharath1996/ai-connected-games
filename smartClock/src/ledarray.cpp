@@ -1,7 +1,7 @@
 #include "ledarray.h"
-// GPIO3: avoids the C3 Super Mini's onboard LED (GPIO8), boot button (GPIO9) and strapping pin (GPIO2).
-#define PIN_WS2812B 3
-#define NUM_PIXELS  6
+// GPIO20: right side of C3 Super Mini, free pin when using native USB CDC
+#define PIN_WS2812B 20
+#define NUM_PIXELS  5
 static CRGB leds[NUM_PIXELS];
 
 namespace {
@@ -27,6 +27,13 @@ void defaultLEDColor(CRGB color){
 void setLEDcolor(int index, CRGB color) {
   if (index < 0 || index >= NUM_PIXELS) return;
   leds[index] = color;
+  FastLED.show();
+}
+
+void setLEDBrightness(uint8_t brightness) {
+  brightnessAutomationActive = false;
+  appliedBrightness = brightness;
+  FastLED.setBrightness(brightness);
   FastLED.show();
 }
 
