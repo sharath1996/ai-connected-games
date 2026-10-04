@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.smartclock.alarm"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.smartclock.alarm"
