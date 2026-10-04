@@ -223,6 +223,9 @@ class MainActivity : ComponentActivity() {
                             val withId = if (alarm.id == 0) alarm.copy(id = store.nextId()) else alarm
                             saveAlarm(withId)
                             showEditor = false
+                        },
+                        onSaveBootDefaults = { r, g, b, brightness, emoji ->
+                            sendBootDefaults(r, g, b, brightness, emoji)
                         }
                     )
                 }
@@ -233,7 +236,21 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun SmartClockTopBar() {
-        CenterAlignedTopAppBar(title = { Text("SmartClock Alarm") })
+        CenterAlignedTopAppBar(title = { Text("AiluClock") })
+    }
+
+    /** Sends PERSIST_LED + PERSIST_EMOJI so the clock boots into these defaults. */
+    private fun sendBootDefaults(r: Int, g: Int, b: Int, brightness: Int?, emoji: String) {
+        showSnack("Saving boot defaults…")
+        thread {
+            val ackLed = usb.sendPersistLed(r, g, b, brightness)
+            val ackEmoji = usb.sendPersistEmoji(emoji)
+            runOnUiThread {
+                usbStatus.value = usb.status
+                val ok = ackLed != null && ackEmoji != null
+                showSnack(if (ok) "Boot defaults saved on the clock" else "Save failed — connect the clock first")
+            }
+        }
     }
 
     @Composable
@@ -250,7 +267,7 @@ class MainActivity : ComponentActivity() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("SmartClock (USB OTG)", style = MaterialTheme.typography.titleMedium)
+                    Text("AiluClock (USB OTG)", style = MaterialTheme.typography.titleMedium)
                     Text(
                         usbStatus.value,
                         style = MaterialTheme.typography.bodySmall,
@@ -275,6 +292,23 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }) { Text("Test") }
+            }
+            Row(
+                Modifier
+                    .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Boot defaults: color + symbol shown at power-on",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = {
+                    // Persist green ♥ as a safe factory-style default.
+                    sendBootDefaults(0, 128, 0, null, "♥")
+                }) { Text("Set as boot default") }
             }
         }
     }

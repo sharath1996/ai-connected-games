@@ -1,14 +1,18 @@
-# SmartClock Alarm — Android App
+# AiluClock — Android App
 
 An Android alarm app that fires the SmartClock firmware's `TRIGGER` command over a
 USB OTG cable at the scheduled time: it sets the LED array color, shows a symbol on
-the OLED, and optionally sounds the buzzer. See [../docs/serial_commands.md](../docs/serial_commands.md)
-for the firmware-side protocol.
+the OLED, and optionally sounds the buzzer. It can also save **power-on defaults**
+(color, brightness, OLED symbol) into the clock's flash so it boots into them. See
+[../docs/serial_commands.md](../docs/serial_commands.md) for the firmware-side protocol.
 
 ## Features
 
 - One-time alarms (specific date + time) or daily repeating alarms
 - Per-alarm trigger settings: LED color (R/G/B sliders), OLED symbol, buzzer on/off
+- **Power-on defaults**: "Save as boot default" in the alarm editor sends
+  `PERSIST_LED`/`PERSIST_EMOJI` so the clock boots into that color, brightness, and
+  symbol; a quick "Set as boot default" button on the USB card restores a green ♥
 - Exact alarms via `AlarmManager` (fires even in doze mode); alarms are re-armed after reboot
 - USB status card with **Connect** and **Test** (sends `TRIGGER 255 0 0 ♥ 1`) buttons
 - If the clock isn't connected when an alarm fires, a high-priority notification on the

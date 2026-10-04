@@ -56,7 +56,8 @@ private val EMOJI_CHOICES = listOf("♥", "★", "☀", "☁", "☂", "♪", "�
 fun AlarmEditorDialog(
     initial: Alarm?,
     onDismiss: () -> Unit,
-    onSave: (Alarm) -> Unit
+    onSave: (Alarm) -> Unit,
+    onSaveBootDefaults: ((r: Int, g: Int, b: Int, brightness: Int, emoji: String) -> Unit)? = null
 ) {
     val now = remember { Calendar.getInstance() }
     var label by remember { mutableStateOf(initial?.label ?: "") }
@@ -69,6 +70,8 @@ fun AlarmEditorDialog(
     var b by remember { mutableFloatStateOf((initial?.b ?: 0).toFloat()) }
     var emoji by remember { mutableStateOf(initial?.emoji ?: "♥") }
     var sound by remember { mutableStateOf(initial?.sound ?: true) }
+    var saveAsBootDefault by remember { mutableStateOf(false) }
+    var bootBrightness by remember { mutableFloatStateOf(128f) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
 
@@ -155,11 +158,33 @@ fun AlarmEditorDialog(
                     Text("Sound buzzer", Modifier.weight(1f))
                     Switch(checked = sound, onCheckedChange = { sound = it })
                 }
+
+                HorizontalDivider()
+
+                Text("Power-on defaults", style = MaterialTheme.typography.labelLarge)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Save as boot default", Modifier.weight(1f))
+                    Switch(checked = saveAsBootDefault, onCheckedChange = { saveAsBootDefault = it })
+                }
+                if (saveAsBootDefault) {
+                    ColorSlider("Brightness", bootBrightness) { bootBrightness = it }
+                    Text(
+                        "The clock will boot into this color + symbol. (Sent when the alarm is saved.)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 val base = initial ?: Alarm(id = 0, hour = hour, minute = minute)
+                val finalEmoji = emoji.trim().ifEmpty { "♥" }
+                if (saveAsBootDefault && onSaveBootDefaults != null) {
+                    onSaveBootDefaults.invoke(
+                        r.toInt(), g.toInt(), b.toInt(), bootBrightness.toInt().coerceIn(1, 255), finalEmoji
+                    )
+                }
                 onSave(
                     base.copy(
                         label = label.trim(),
@@ -170,7 +195,7 @@ fun AlarmEditorDialog(
                         r = r.toInt(),
                         g = g.toInt(),
                         b = b.toInt(),
-                        emoji = emoji.trim().ifEmpty { "♥" },
+                        emoji = finalEmoji,
                         sound = sound,
                         enabled = true
                     )
